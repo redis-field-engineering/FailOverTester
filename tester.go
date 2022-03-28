@@ -38,6 +38,7 @@ type RedisConfig struct {
 	Port     int
 	Conn     net.Conn
 	Logfile  log.Logger
+	TTL      int
 }
 
 func worker(id int, jobs <-chan int, results chan<- WriteLog, rl ratelimit.Limiter, conf RedisConfig) {
@@ -54,7 +55,12 @@ func worker(id int, jobs <-chan int, results chan<- WriteLog, rl ratelimit.Limit
 	for j := range jobs {
 		rl.Take()
 		startTime := time.Now()
-		_, err := redisClient.Ping(ctx).Result()
+		_, err := redisClient.Set(
+			ctx,
+			fmt.Sprintf("job:%d", j),
+			"1",
+			time.Duration(conf.TTL)*time.Second,
+		).Result()
 		errHndlr(err)
 		results <- WriteLog{
 			Timestamp: time.Since(startTime),
@@ -89,6 +95,7 @@ var args struct {
 	MessageCount  int    `help:"Number of writes" default:"100000" arg:"--writes, -w, env:REDIS_WRITES"`
 	ClientCount   int    `help:"Number of clients" default:"10" arg:"--clients, -c, env:REDIS_CLIENTS"`
 	RateLimit     int    `help:"Number of writes/second" default:"1000" arg:"--rate-limit, -r, env:REDIS_RATE_LIMIT"`
+	TTL           int    `help:"Number of second to keep written keys" default:"120" arg:"--ttl, -t, env:REDIS_TTL"`
 	LogFile       string `help:"Where to Log" default:"" arg:"--logfile, -l, env:REDIS_LOGFILE"`
 	OutFile       string `help:"Where to write" default:"results.csv" arg:"--out-file, -o, env:REDIS_OUTFILE"`
 }
@@ -100,6 +107,7 @@ func main() {
 		Host:     args.RedisServer,
 		Password: args.RedisPassword,
 		Port:     args.RedisPort,
+		TTL:      args.TTL,
 	}
 
 	if args.LogFile == "" {
