@@ -27,7 +27,8 @@ func errHndlr(err error) {
 }
 
 type WriteLog struct {
-	Timestamp time.Duration
+	Timestamp time.Time
+	Duration  time.Duration
 	Job       int
 	Client    int
 }
@@ -63,7 +64,8 @@ func worker(id int, jobs <-chan int, results chan<- WriteLog, rl ratelimit.Limit
 		).Result()
 		errHndlr(err)
 		results <- WriteLog{
-			Timestamp: time.Since(startTime),
+			Timestamp: startTime,
+			Duration:  time.Since(startTime),
 			Job:       j,
 			Client:    id,
 		}
@@ -145,16 +147,17 @@ func main() {
 	}
 	w := csv.NewWriter(f)
 
-	if err := w.Write([]string{"duration(μs)", "message", "client"}); err != nil {
+	if err := w.Write([]string{"duration(μs)", "message", "client", "timestamp"}); err != nil {
 		log.Fatalln("error writing record to file", err)
 	}
 
 	for a := 0; a <= args.MessageCount-1; a++ {
 		r := <-results
 		if err := w.Write([]string{
-			fmt.Sprintf("%d", r.Timestamp.Microseconds()),
+			fmt.Sprintf("%d", r.Duration.Microseconds()),
 			fmt.Sprintf("%d", r.Job),
 			fmt.Sprintf("%d", r.Client),
+			fmt.Sprintf("%d:%d:%d.%d", r.Timestamp.Local().Hour(), r.Timestamp.Local().Minute(), r.Timestamp.Local().Second(), r.Timestamp.Local().Nanosecond()),
 		}); err != nil {
 			log.Fatalln("error writing record to file", err)
 		}
